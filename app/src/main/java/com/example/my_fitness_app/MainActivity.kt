@@ -2,7 +2,8 @@ package com.example.my_fitness_app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent\nimport androidx.lifecycle.lifecycleScope
+import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,8 +22,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.room.*\nimport android.util.Base64
-import kotlinx.coroutines.launch\nimport android.content.Context\nimport android.database.sqlite.SQLiteDatabase\nimport java.io.File
+import androidx.room.*
+import kotlinx.coroutines.launch
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 
 private val Ink = Color(0xFF070B14)
 private val Panel = Color(0xFF111B2B)
