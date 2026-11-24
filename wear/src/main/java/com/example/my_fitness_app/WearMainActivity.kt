@@ -15,7 +15,8 @@ import androidx.compose.ui.unit.dp
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch\nimport kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 private val WatchBg = Color(0xFF070B14)
 private val WatchBlue = Color(0xFF287BFF)
@@ -76,10 +77,3 @@ private fun WatchWorkoutScreen() {
         }
     }
 }
-
-private suspend fun <T> com.google.android.gms.tasks.Task<T>.await(): T =
-    kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-        addOnSuccessListener { if (continuation.isActive) continuation.resume(it) {} }
-        addOnFailureListener { if (continuation.isActive) continuation.resumeWith(Result.failure(it)) }
-        addOnCanceledListener { continuation.cancel() }
-    }
