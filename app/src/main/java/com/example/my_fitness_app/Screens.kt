@@ -268,7 +268,7 @@ fun MoreScreen(vm: GymViewModel) {
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(checked = vm.dynamicColor && dynamicAvailable, onCheckedChange = { vm.setDynamicColor(it) }, enabled = dynamicAvailable)
+                Switch(checked = vm.dynamicColor && dynamicAvailable, onCheckedChange = { vm.updateDynamicColor(it) }, enabled = dynamicAvailable)
             }
         }
 

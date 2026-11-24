@@ -36,7 +36,7 @@ class GymViewModel(
         }
     }
 
-    fun setDynamicColor(value: Boolean) {
+    fun updateDynamicColor(value: Boolean) {
         dynamicColor = value
         uiPrefs.edit().putBoolean("dynamic_color", value).apply()
     }
