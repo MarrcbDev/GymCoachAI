@@ -1,0 +1,27 @@
+package com.example.my_fitness_app.wear
+
+import android.util.Log
+import com.google.android.gms.wearable.DataEvent
+import com.google.android.gms.wearable.DataEventBuffer
+import com.google.android.gms.wearable.DataMapItem
+import com.google.android.gms.wearable.WearableListenerService
+
+class WorkoutDataListenerService : WearableListenerService() {
+    override fun onDataChanged(dataEvents: DataEventBuffer) {
+        dataEvents.forEach { event ->
+            if (event.type == DataEvent.TYPE_CHANGED && event.dataItem.uri.path == "/gymcoach/workout/session") {
+                val map = DataMapItem.fromDataItem(event.dataItem).dataMap
+                val type = map.getString("type", "Entrenamiento")
+                val duration = map.getLong("duration_seconds", 0L)
+                val steps = map.getInt("steps", 0)
+                getSharedPreferences("wear_sync", MODE_PRIVATE).edit()
+                    .putString("last_workout_type", type)
+                    .putLong("last_workout_duration", duration)
+                    .putInt("last_workout_steps", steps)
+                    .putLong("last_workout_received", System.currentTimeMillis())
+                    .apply()
+                Log.i("GymCoachAI", "Sesión recibida: $type, ${duration}s, $steps pasos")
+            }
+        }
+    }
+}
