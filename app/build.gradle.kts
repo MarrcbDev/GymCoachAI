@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.my_fitness_app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 3
+        versionName = "2.1.0"
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -22,7 +22,6 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
-    dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
 
     implementation("androidx.activity:activity-compose:1.10.0")
@@ -37,6 +36,7 @@ dependencies {
 
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
+    implementation("androidx.sqlite:sqlite:2.5.0")
     ksp("androidx.room:room-compiler:2.8.4")
 
     implementation("androidx.datastore:datastore-preferences:1.2.0")
@@ -45,5 +45,4 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
-    }
 }

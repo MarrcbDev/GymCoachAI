@@ -11,7 +11,16 @@ Migración inicial de Flutter/Dart a Kotlin nativo. Proyecto Android Studio con 
 4. Ejecuta `app` en un teléfono/emulador Android.
 5. Ejecuta `wear` en un emulador Wear OS o reloj compatible.
 
-## Qué incluye esta primera base
+## Cambios de la versión 2.1.0
+- Registro al abrir la app por primera vez (incluye selección de sexo). Si ya hay perfil, entra directo.
+- Estilo Material You + AMOLED: colores dinámicos del sistema con fondo negro puro; se pueden apagar en Más → Apariencia para usar el azul y negro.
+- Scroll en Rutinas, Más y Perfil; el teclado ya no tapa los campos.
+- Iconos redondeados (rellenos al seleccionar, de contorno al no seleccionar) e icono de la app con capa monocromática.
+- Wear OS: arreglado el cierre al abrir (la actividad estaba en un paquete distinto al namespace) y el `applicationId` ahora coincide con el del teléfono, requisito para que el Data Layer sincronice.
+- Base de datos v3 con migración: añade `sex` sin borrar perfil ni chat.
+- Guardar una API Key inválida ya no cierra la app: muestra el error.
+
+## Qué incluye la base
 - UI oscura azul/negro en Jetpack Compose.
 - Navegación Inicio / Coach IA / Rutinas / Más.
 - Perfil con los campos existentes: nombre, edad, estatura, peso y objetivos.

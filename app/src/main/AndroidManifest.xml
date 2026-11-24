@@ -2,14 +2,30 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="GymCoachAI" android:allowBackup="false">
-        <activity android:name=".MainActivity" android:exported="true">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.GymCoachAI"
+        android:label="GymCoachAI"
+        android:allowBackup="false">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
         </activity>
+        <!-- Cada filtro lleva acción + datos juntos; si no, el Data Layer no entrega los eventos. -->
         <service android:name=".wear.WorkoutDataListenerService" android:exported="true">
-            <intent-filter><action android:name="com.google.android.gms.wearable.DATA_CHANGED"/></intent-filter>
-            <intent-filter><action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED"/></intent-filter>
-            <intent-filter><data android:scheme="wear" android:host="*" android:pathPrefix="/gymcoach/workout"/></intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED"/>
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/gymcoach/workout"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED"/>
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/gymcoach/workout"/>
+            </intent-filter>
         </service>
     </application>
 </manifest>
