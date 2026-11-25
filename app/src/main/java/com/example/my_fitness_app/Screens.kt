@@ -1,9 +1,15 @@
 package com.example.my_fitness_app
 
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -17,17 +23,32 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.my_fitness_app.alarms.ReminderScheduler
+import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+// ───────────────────────────── Piezas comunes ─────────────────────────────
 
 /** Columna con scroll vertical para pantallas largas; sube con el teclado. */
 @Composable
-private fun ScrollColumn(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun ScrollColumn(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -36,15 +57,40 @@ private fun ScrollColumn(modifier: Modifier = Modifier, content: @Composable Col
 }
 
 @Composable
-private fun SectionTitle(text: String) {
+internal fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
 }
 
 @Composable
-private fun IconBadge(icon: ImageVector, modifier: Modifier = Modifier) {
+internal fun IconBadge(icon: ImageVector, modifier: Modifier = Modifier) {
     Surface(modifier.size(44.dp), shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
         Box(contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        }
+    }
+}
+
+internal fun fmtClock(sec: Int): String = "%02d:%02d".format(sec / 60, sec % 60)
+
+private val spanish = Locale("es")
+internal fun fmtWhen(ms: Long): String =
+    DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", spanish).format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
+
+/** Foto de perfil redonda; si no hay foto muestra un icono. */
+@Composable
+internal fun ProfileAvatar(path: String, size: Dp, modifier: Modifier = Modifier) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, path) {
+        value = PhotoUtils.load(path)?.asImageBitmap()
+    }
+    Box(
+        modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        val b = bitmap
+        if (b != null) {
+            Image(b, contentDescription = "Foto de perfil", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Icon(Icons.Rounded.Person, null, Modifier.size(size / 2), tint = MaterialTheme.colorScheme.onSecondaryContainer)
         }
     }
 }
@@ -54,8 +100,19 @@ private fun IconBadge(icon: ImageVector, modifier: Modifier = Modifier) {
 @Composable
 fun Dashboard(vm: GymViewModel, navigate: (String) -> Unit) {
     val u = vm.user
+    val sessions by vm.sessions.collectAsStateWithLifecycle()
+    val alarms by vm.alarms.collectAsStateWithLifecycle()
     val bmi = if (u != null && u.height > 0) u.weight / (u.height * u.height) else null
     val watch = vm.lastWatchSummary()
+
+    val weekStart = java.time.LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+        .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val week = sessions.filter { it.startMs >= weekStart }
+    val minutes = week.sumOf { (it.endMs - it.startMs) / 60000 }.toInt()
+    val next = alarms.filter { it.enabled }
+        .mapNotNull { r -> ReminderScheduler.nextTrigger(r)?.let { r to it } }
+        .minByOrNull { it.second }
+
     LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Card(
@@ -80,6 +137,13 @@ fun Dashboard(vm: GymViewModel, navigate: (String) -> Unit) {
                 }
             }
         }
+        item { SectionTitle("Esta semana") }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricCard("Sesiones", "${week.size}", Icons.Rounded.FitnessCenter, Modifier.weight(1f))
+                MetricCard("Minutos", "$minutes", Icons.Rounded.Timer, Modifier.weight(1f))
+            }
+        }
         item { SectionTitle("Tu resumen") }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -94,10 +158,16 @@ fun Dashboard(vm: GymViewModel, navigate: (String) -> Unit) {
             }
         }
         item { SectionTitle("Atajos") }
-        item { FeatureCard("Coach inteligente", "Resuelve dudas y crea hábitos con IA.", Icons.Rounded.AutoAwesome) { navigate("Coach IA") } }
-        item { FeatureCard("Recordatorios", "Organiza tus próximas sesiones.", Icons.Rounded.NotificationsActive) { navigate("Más") } }
         item {
-            FeatureCard("Tu reloj", watch ?: "Sincroniza tus entrenamientos desde Wear OS.", Icons.Rounded.Watch) { navigate("Más") }
+            FeatureCard(
+                "Próxima alarma",
+                next?.let { "${it.first.title} · ${fmtWhen(it.second)}" } ?: "Sin alarmas activas. Crea una en Agenda.",
+                Icons.Rounded.Alarm,
+            ) { navigate("Agenda") }
+        }
+        item { FeatureCard("Coach inteligente", "Pide rutinas, planes y notas a tu coach.", Icons.Rounded.AutoAwesome) { navigate("Coach IA") } }
+        item {
+            FeatureCard("Tu reloj", watch ?: "Sincroniza tus entrenamientos desde Wear OS.", Icons.Rounded.Watch) { navigate("Rutinas") }
         }
     }
 }
@@ -139,6 +209,12 @@ private fun FeatureCard(title: String, subtitle: String, icon: ImageVector, onCl
 
 // ───────────────────────────── Coach IA ─────────────────────────────
 
+private val quickPrompts = listOf(
+    "Crea una rutina de pierna para hoy",
+    "Planifica mi semana de entrenamiento",
+    "¿Cómo mejoro mi técnica de sentadilla?",
+)
+
 @Composable
 fun ChatScreen(vm: GymViewModel) {
     var input by remember { mutableStateOf("") }
@@ -147,6 +223,17 @@ fun ChatScreen(vm: GymViewModel) {
     LaunchedEffect(count) { if (count > 0) listState.animateScrollToItem(count - 1) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Modelo: ${vm.aiModel}",
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+            )
+            IconButton(onClick = { vm.clearChat() }, enabled = vm.messages.isNotEmpty()) {
+                Icon(Icons.Rounded.DeleteSweep, "Borrar conversación")
+            }
+        }
         if (!vm.hasApiKey) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
@@ -155,7 +242,7 @@ fun ChatScreen(vm: GymViewModel) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.VpnKey, null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
                     Spacer(Modifier.width(12.dp))
-                    Text("Falta tu API Key de OpenAI. Pégala en Más → OpenAI.", color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    Text("Falta tu API Key de OpenAI. Pégala en Ajustes → OpenAI.", color = MaterialTheme.colorScheme.onTertiaryContainer)
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -168,12 +255,18 @@ fun ChatScreen(vm: GymViewModel) {
         ) {
             if (vm.messages.isEmpty()) {
                 item {
-                    Text("Tu coach está listo. Pregunta por rutinas, técnica o hábitos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Tu coach responde sobre entrenamiento, técnica, recuperación y hábitos. También puede crear rutinas, iniciar entrenamientos y planificar notas o alarmas.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                items(quickPrompts) { prompt ->
+                    SuggestionChip(onClick = { vm.send(prompt) }, label = { Text(prompt) }, enabled = !vm.busy)
                 }
             }
-            items(vm.messages) { msg ->
+            items(vm.messages, key = { it.id }) { msg ->
                 val mine = msg.role == "user"
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                     Surface(
                         color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
@@ -182,10 +275,17 @@ fun ChatScreen(vm: GymViewModel) {
                             bottomStart = if (mine) 20.dp else 6.dp, bottomEnd = if (mine) 6.dp else 20.dp,
                         ),
                     ) { Text(msg.content, Modifier.widthIn(max = 300.dp).padding(horizontal = 14.dp, vertical = 10.dp)) }
+                    msg.suggestions.forEachIndexed { index, s ->
+                        FilledTonalButton(
+                            onClick = { vm.applySuggestion(msg.id, index) },
+                            modifier = Modifier.padding(top = 6.dp),
+                        ) { Text(AiAssistant.label(s), maxLines = 1) }
+                    }
                 }
             }
             if (vm.busy) item { Text("El coach está pensando…", color = MaterialTheme.colorScheme.primary) }
         }
+        vm.chatError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 4.dp)) }
         Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 input, { input = it }, Modifier.weight(1f),
@@ -202,54 +302,10 @@ fun ChatScreen(vm: GymViewModel) {
     }
 }
 
-// ───────────────────────────── Rutinas ─────────────────────────────
-
-private data class ModeInfo(val name: String, val description: String, val icon: ImageVector)
-
-private val modes = listOf(
-    ModeInfo("Fuerza", "Series, repeticiones y descansos", Icons.Rounded.FitnessCenter),
-    ModeInfo("Cardio", "Tiempo, ritmo y distancia", Icons.Rounded.Favorite),
-    ModeInfo("Movilidad", "Flexibilidad y rango de movimiento", Icons.Rounded.SelfImprovement),
-    ModeInfo("Resistencia", "Trabajo por intervalos", Icons.Rounded.Timer),
-    ModeInfo("Recuperación", "Sesiones suaves y descanso", Icons.Rounded.Spa),
-)
+// ───────────────────────────── Ajustes ─────────────────────────────
 
 @Composable
-fun WorkoutsScreen() {
-    var selected by remember { mutableStateOf("Fuerza") }
-    ScrollColumn {
-        SectionTitle("Modos de entrenamiento")
-        modes.forEach { mode ->
-            val on = mode.name == selected
-            Card(
-                onClick = { selected = mode.name },
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                ),
-            ) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconBadge(mode.icon)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(mode.name, fontWeight = FontWeight.SemiBold)
-                        Text(mode.description, style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = 0.75f))
-                    }
-                    if (on) Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
-        Text("Modo seleccionado: $selected", color = MaterialTheme.colorScheme.primary)
-    }
-}
-
-// ───────────────────────────── Más ─────────────────────────────
-
-@Composable
-fun MoreScreen(vm: GymViewModel) {
-    var reminder by remember { mutableStateOf("") }
-    var alarmTime by remember { mutableStateOf("07:00") }
+fun SettingsScreen(vm: GymViewModel) {
     var keyInput by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
     val dynamicAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -272,24 +328,10 @@ fun MoreScreen(vm: GymViewModel) {
             }
         }
 
-        SectionTitle("Organización")
-        OutlinedTextField(
-            reminder, { reminder = it }, Modifier.fillMaxWidth(),
-            label = { Text("Nuevo recordatorio") }, shape = RoundedCornerShape(16.dp),
-            leadingIcon = { Icon(Icons.Rounded.NotificationsActive, null) },
-        )
-        FilledTonalButton(onClick = { reminder = "" }, enabled = reminder.isNotBlank()) {
-            Text("Guardar recordatorio (pendiente de persistencia)")
-        }
-        OutlinedTextField(
-            alarmTime, { alarmTime = it }, Modifier.fillMaxWidth(),
-            label = { Text("Hora de alarma (HH:mm)") }, shape = RoundedCornerShape(16.dp),
-            leadingIcon = { Icon(Icons.Rounded.Alarm, null) },
-        )
-        Text(
-            "La programación real de alarmas se incorpora en la siguiente iteración con permisos de Android.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium,
-        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+        SectionTitle("Modelo de IA")
+        ModelPicker(vm)
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
@@ -320,12 +362,47 @@ fun MoreScreen(vm: GymViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelPicker(vm: GymViewModel) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = vm.aiModel,
+            onValueChange = { vm.updateModel(it) },
+            label = { Text("Modelo que usa el coach") },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            vm.models.forEach { model ->
+                DropdownMenuItem(
+                    text = { Text(model) },
+                    onClick = { vm.updateModel(model); expanded = false },
+                    leadingIcon = { if (model == vm.aiModel) Icon(Icons.Rounded.CheckCircle, null) },
+                )
+            }
+        }
+    }
+    FilledTonalButton(onClick = { vm.refreshModels() }, enabled = vm.hasApiKey && !vm.modelsLoading) {
+        Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(if (vm.modelsLoading) "Consultando…" else "Cargar modelos de mi cuenta")
+    }
+    Text(
+        vm.modelsMessage ?: "Elige de la lista o escribe el nombre exacto de un modelo. Los modelos más grandes responden mejor pero cuestan más.",
+        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
 // ───────────────────────────── Perfil y registro ─────────────────────────────
 
 @Composable
 fun ProfileScreen(vm: GymViewModel, close: () -> Unit) {
-    ProfileForm(initial = vm.user, submitLabel = "Guardar perfil", showBack = true, onBack = close) { name, sex, age, h, w, goals ->
-        vm.saveProfile(name, sex, age, h, w, goals)
+    ProfileForm(initial = vm.user, submitLabel = "Guardar perfil", showBack = true, onBack = close) { name, sex, age, h, w, goals, photo ->
+        vm.saveProfile(name, sex, age, h, w, goals, photo)
         close()
     }
 }
@@ -346,8 +423,8 @@ fun RegistrationScreen(vm: GymViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(Modifier.height(12.dp))
-        ProfileForm(initial = null, submitLabel = "Empezar", showBack = false, onBack = {}) { name, sex, age, h, w, goals ->
-            vm.saveProfile(name, sex, age, h, w, goals)
+        ProfileForm(initial = null, submitLabel = "Empezar", showBack = false, onBack = {}) { name, sex, age, h, w, goals, photo ->
+            vm.saveProfile(name, sex, age, h, w, goals, photo)
         }
     }
 }
@@ -361,14 +438,33 @@ private fun ProfileForm(
     submitLabel: String,
     showBack: Boolean,
     onBack: () -> Unit,
-    onSubmit: (name: String, sex: String, age: Int, height: Double, weight: Double, goals: String) -> Unit,
+    onSubmit: (name: String, sex: String, age: Int, height: Double, weight: Double, goals: String, photo: String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var sex by remember { mutableStateOf(initial?.sex ?: "") }
     var age by remember { mutableStateOf(initial?.age?.toString() ?: "") }
     var height by remember { mutableStateOf(initial?.height?.toString() ?: "") }
     var weight by remember { mutableStateOf(initial?.weight?.toString() ?: "") }
     var goals by remember { mutableStateOf(initial?.goals ?: "") }
+    var photo by remember { mutableStateOf(initial?.imagePath ?: "") }
+    var photoError by remember { mutableStateOf<String?>(null) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            val saved = PhotoUtils.saveProfilePhoto(context, uri)
+            if (saved != null) {
+                // Si la foto actual era una elegida en esta misma pantalla, no se deja huérfana.
+                if (photo != (initial?.imagePath ?: "")) PhotoUtils.deleteOld(context, photo)
+                photo = saved
+                photoError = null
+            } else {
+                photoError = "No se pudo leer esa imagen."
+            }
+        }
+    }
+    val pickPhoto = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
 
     val ageV = age.toIntOrNull()
     val heightV = parseNumber(height)
@@ -381,6 +477,25 @@ private fun ProfileForm(
     val sexOptions = listOf("Hombre", "Mujer", "Otro")
 
     ScrollColumn {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box {
+                ProfileAvatar(photo, 112.dp)
+                FilledIconButton(
+                    onClick = { pickPhoto() },
+                    modifier = Modifier.align(Alignment.BottomEnd).size(36.dp),
+                ) { Icon(Icons.Rounded.PhotoCamera, "Cambiar foto", Modifier.size(18.dp)) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { pickPhoto() }) { Text(if (photo.isBlank()) "Elegir foto" else "Cambiar foto") }
+                if (photo.isNotBlank()) {
+                    TextButton(onClick = {
+                        if (photo != (initial?.imagePath ?: "")) PhotoUtils.deleteOld(context, photo)
+                        photo = ""
+                    }) { Text("Quitar") }
+                }
+            }
+            photoError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        }
         OutlinedTextField(
             name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Nombre") }, singleLine = true,
             shape = RoundedCornerShape(16.dp),
@@ -404,7 +519,7 @@ private fun ProfileForm(
             shape = RoundedCornerShape(16.dp), minLines = 2,
         )
         Button(
-            onClick = { onSubmit(name, sex, ageV!!, heightV!!, weightV!!, goals) },
+            onClick = { onSubmit(name, sex, ageV!!, heightV!!, weightV!!, goals, photo) },
             enabled = valid,
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) { Text(submitLabel) }

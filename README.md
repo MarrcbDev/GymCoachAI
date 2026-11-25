@@ -11,6 +11,15 @@ Migración inicial de Flutter/Dart a Kotlin nativo. Proyecto Android Studio con 
 4. Ejecuta `app` en un teléfono/emulador Android.
 5. Ejecuta `wear` en un emulador Wear OS o reloj compatible.
 
+## Cambios de la versión 2.2.0
+- Coach IA solo responde sobre fitness (entrenamiento, técnica, recuperación, hábitos). Fuera de ese ámbito lo rechaza y ofrece un tema relacionado.
+- El coach puede crear rutinas, iniciar entrenamientos y planificar notas o alarmas. Si el usuario lo pide, lo hace; si no, lo propone con botones.
+- Selector de modelo en Ajustes (lista, texto libre y carga de los modelos disponibles para tu API Key).
+- Foto de perfil: elegir, cambiar y quitar. Se guarda reducida en el almacenamiento privado de la app.
+- Rutinas y modos de entrenamiento con temporizador (trabajo/descanso/rondas), historial y sesiones recibidas del reloj.
+- Agenda: notas planificadas y alarmas de entrenamiento con notificación real (AlarmManager).
+- Base de datos v4 con migración (no se pierde perfil ni chat).
+
 ## Cambios de la versión 2.1.0
 - Registro al abrir la app por primera vez (incluye selección de sexo). Si ya hay perfil, entra directo.
 - Estilo Material You + AMOLED: colores dinámicos del sistema con fondo negro puro; se pueden apagar en Más → Apariencia para usar el azul y negro.

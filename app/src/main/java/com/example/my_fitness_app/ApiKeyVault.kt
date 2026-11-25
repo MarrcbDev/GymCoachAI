@@ -32,7 +32,7 @@ class ApiKeyVault(context: Context) {
         prefs.edit().putString("openai_key", Base64.encodeToString(packed, Base64.NO_WRAP)).apply()
     }
     fun read(): String {
-        val packed = Base64.decode(prefs.getString("openai_key", null) ?: error("Configura tu API Key en Más."), Base64.NO_WRAP)
+        val packed = Base64.decode(prefs.getString("openai_key", null) ?: error("Configura tu API Key en Ajustes."), Base64.NO_WRAP)
         val iv = packed.copyOfRange(0, 12)
         val encrypted = packed.copyOfRange(12, packed.size)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
