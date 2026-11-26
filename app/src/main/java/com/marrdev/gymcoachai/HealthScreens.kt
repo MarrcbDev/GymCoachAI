@@ -62,7 +62,7 @@ internal fun HealthSection(vm: GymViewModel) {
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Usarlas en las recomendaciones del coach", Modifier.weight(1f))
-            Switch(checked = vm.shareHealth, onCheckedChange = { vm.setShareHealth(it) })
+            Switch(checked = vm.shareHealth, onCheckedChange = { vm.updateShareHealth(it) })
         }
         Text(
             "Se guardan solo en este dispositivo. Si lo dejas activado, el coach de IA las recibe como contexto para adaptar tus ejercicios. No sustituyen la opinión de un profesional de la salud.",

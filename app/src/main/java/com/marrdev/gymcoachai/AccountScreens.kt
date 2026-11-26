@@ -197,7 +197,7 @@ internal fun AccountSection(vm: GymViewModel) {
                             options.forEachIndexed { index, (value, label) ->
                                 SegmentedButton(
                                     selected = vm.aiSource == value,
-                                    onClick = { vm.setAiSource(value) },
+                                    onClick = { vm.updateAiSource(value) },
                                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                                 ) { Text(label, maxLines = 1) }
                             }

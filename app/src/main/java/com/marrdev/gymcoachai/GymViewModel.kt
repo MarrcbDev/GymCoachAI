@@ -451,7 +451,7 @@ class GymViewModel(
             result.onFailure { authMessage = it.message }
             result.onSuccess {
                 account = auth.current()
-                setAiSource("account")
+                updateAiSource("account")
                 if (useBackend) refreshModels()
             }
             authBusy = false
@@ -489,7 +489,7 @@ class GymViewModel(
         quotaText = null
     }
 
-    fun setAiSource(source: String) {
+    fun updateAiSource(source: String) {
         aiSource = source
         uiPrefs.edit().putString("ai_source", source).apply()
         quotaText = null
@@ -509,7 +509,7 @@ class GymViewModel(
         uiPrefs.edit().putBoolean("health_asked", true).apply()
     }
 
-    fun setShareHealth(value: Boolean) {
+    fun updateShareHealth(value: Boolean) {
         shareHealth = value
         uiPrefs.edit().putBoolean("share_health", value).apply()
     }
