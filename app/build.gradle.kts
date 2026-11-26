@@ -4,17 +4,41 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+// Firebase se activa solo si existe app/google-services.json; sin él la app compila y funciona en modo local.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
+val backendUrl: String = (project.findProperty("BACKEND_URL") as String?)?.takeIf { it.isNotBlank() }
+    ?: System.getenv("BACKEND_URL").orEmpty()
 android {
-    namespace = "com.example.my_fitness_app"
+    namespace = "com.marrdev.gymcoachai"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.my_fitness_app"
+        applicationId = "com.marrdev.gymcoachai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.2.0"
+        versionCode = 5
+        versionName = "2.3.0"
+        buildConfigField("String", "BACKEND_URL", "\"${backendUrl.trim().trimEnd('/')}\"")
     }
-    buildFeatures { compose = true }
+    signingConfigs {
+        // Firma de depuración fija: el SHA-1 que registras en Firebase no cambia entre builds.
+        getByName("debug") {
+            val ks = rootProject.file("debug.keystore")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -43,6 +67,14 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
+
+    // Cuenta opcional: Firebase Auth + inicio de sesión con Google (Credential Manager)
+    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

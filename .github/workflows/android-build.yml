@@ -40,7 +40,18 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Add google-services.json from secret (optional)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            echo "google-services.json escrito desde el secret"
+          fi
+
       - name: Build Android and Wear OS debug APKs
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
         run: gradle :app:assembleDebug :wear:assembleDebug --stacktrace
 
       - name: Upload Android APK

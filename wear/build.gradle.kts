@@ -5,15 +5,27 @@ plugins {
 }
 
 android {
-    namespace = "com.example.my_fitness_app.wear"
+    namespace = "com.marrdev.gymcoachai.wear"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.my_fitness_app"
+        applicationId = "com.marrdev.gymcoachai"
         minSdk = 30
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.1.0"
+        versionCode = 5
+        versionName = "2.3.0"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            val ks = rootProject.file("debug.keystore")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildFeatures {

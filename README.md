@@ -11,6 +11,21 @@ Migración inicial de Flutter/Dart a Kotlin nativo. Proyecto Android Studio con 
 4. Ejecuta `app` en un teléfono/emulador Android.
 5. Ejecuta `wear` en un emulador Wear OS o reloj compatible.
 
+## Cambios de la versión 2.3.0
+- **Paquete nuevo: `com.marrdev.gymcoachai`** (app y reloj). Es una app distinta a la anterior: se instala aparte y empieza sin datos.
+- Corregido el cierre al crear alarmas o notas con hora: en Android 14+ las alarmas exactas necesitan un permiso; ahora la app lo declara, avisa en Agenda y, si falta, usa una alarma aproximada en vez de cerrarse.
+- Si la app se cierra por un error, al volver a abrirla muestra el informe para copiarlo.
+- Lesiones y condiciones médicas guardadas localmente (Perfil). Si no hay ninguna anotada, se pregunta una sola vez. El coach las usa para adaptar ejercicios (se puede desactivar).
+- Inicio de sesión opcional con Google o correo (Firebase). Con cuenta, el coach usa tu API Key a través de un backend (ver `BACKEND.md`); sin cuenta, registro local con la API Key propia. Se puede cambiar de fuente en Ajustes.
+- `debug.keystore` fijo en el repo para que el SHA-1 de Google Sign-In no cambie entre builds.
+
+## Cambios de la versión 2.3.0
+- **Nuevo paquete:** `com.marrdev.gymcoachai` (app y reloj). Es una app distinta de la anterior: los datos guardados en `com.example.my_fitness_app` no pasan solos.
+- **Corrección:** al guardar una nota o alarma con hora la app se cerraba. Android 12+ exige el permiso "Alarmas y recordatorios" para alarmas exactas; ahora se declara, se pide desde Agenda y, si no está permitido, la alarma se programa aproximada en vez de cerrar la app. Cualquier cierre inesperado se muestra al abrir de nuevo, con botón para copiar el informe.
+- **Lesiones y condiciones médicas** (Perfil): lista local; se pregunta una sola vez al entrar si hay alguna. El coach las usa para adaptar ejercicios (se puede desactivar).
+- **Cuenta opcional:** Google o correo, o registro local sin cuenta. Con cuenta el coach usa tu API Key del servidor (ver `BACKEND.md`); sin cuenta, cada usuario puede seguir usando la suya.
+- Firma de depuración fija (`debug.keystore`) para que el SHA-1 de Firebase no cambie entre builds.
+
 ## Cambios de la versión 2.2.0
 - Coach IA solo responde sobre fitness (entrenamiento, técnica, recuperación, hábitos). Fuera de ese ámbito lo rechaza y ofrece un tema relacionado.
 - El coach puede crear rutinas, iniciar entrenamientos y planificar notas o alarmas. Si el usuario lo pide, lo hace; si no, lo propone con botones.
@@ -53,4 +68,4 @@ Es un **andamiaje de migración funcional inicial**, no una versión final lista
 - Historial con selector de conversaciones, streaming, cancelación y manejo detallado de errores de API.
 
 ## Compatibilidad de datos
-La app mantiene el `applicationId` anterior `com.example.my_fitness_app` para facilitar una actualización sobre la instalación Flutter existente. No desinstales la app anterior antes de probar la migración: desinstalarla puede borrar `fitness_app.db`. Haz copia de seguridad antes de instalar esta versión de prueba.
+La app mantiene el `applicationId` anterior `com.marrdev.gymcoachai` para facilitar una actualización sobre la instalación Flutter existente. No desinstales la app anterior antes de probar la migración: desinstalarla puede borrar `fitness_app.db`. Haz copia de seguridad antes de instalar esta versión de prueba.
