@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function healthSyncEnabled(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.healthSyncConsent == true;
+    }
+
+    // Perfil y configuración de cada cuenta.
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasAll(['healthSyncConsent'])
+        && request.resource.data.healthSyncConsent is bool;
+      // La eliminación de cuentas y sus datos se gestionará desde un flujo controlado.
+      allow delete: if false;
+
+      // Datos generales sincronizables. Los chats NO se guardan en Firestore.
+      match /routines/{documentId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /reminders/{documentId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      match /sessions/{documentId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      // Información de salud: solo accesible si el propio usuario activó el consentimiento.
+      match /health_conditions/{documentId} {
+        allow read, create, update, delete: if isOwner(uid) && healthSyncEnabled(uid);
+      }
+
+      // Cualquier subcolección no declarada queda bloqueada.
+      match /{otherCollection}/{documentId} {
+        allow read, write: if false;
+      }
+    }
+
+    // Contadores de uso del backend: solo Admin SDK (Cloud Functions).
+    match /usage/{documentId} {
+      allow read, write: if false;
+    }
+
+    // Todo lo demás queda denegado por defecto.
+  }
+}
