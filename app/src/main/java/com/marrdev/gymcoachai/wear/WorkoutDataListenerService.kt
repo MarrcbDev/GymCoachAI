@@ -2,6 +2,8 @@ package com.marrdev.gymcoachai.wear
 
 import android.util.Log
 import com.marrdev.gymcoachai.GymDatabase
+import com.marrdev.gymcoachai.AuthManager
+import com.marrdev.gymcoachai.FirestoreSyncManager
 import com.marrdev.gymcoachai.SessionEntity
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
@@ -33,6 +35,14 @@ class WorkoutDataListenerService : WearableListenerService() {
                 CoroutineScope(Dispatchers.IO).launch {
                     if (duration > 0 && dao.watchCount(start) == 0) {
                         dao.addSession(SessionEntity(startMs = start, endMs = end, mode = type, source = "watch"))
+                        val uid = AuthManager(applicationContext).current()?.uid
+                        if (uid != null) {
+                            val prefs = getSharedPreferences("ui_settings", MODE_PRIVATE)
+                            val consent = prefs.getBoolean("health_sync_consent_${uid}", false)
+                            val updatedAt = prefs.getLong("profile_updated_at_${uid}", 0L)
+                            val consentExplicit = prefs.getBoolean("health_sync_consent_set_${uid}", false)
+                            runCatching { FirestoreSyncManager().sync(uid, dao, consent, consentExplicit, updatedAt) }
+                        }
                     }
                 }
             }

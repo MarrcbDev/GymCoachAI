@@ -18,7 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private val KINDS = listOf("Lesión", "Condición", "Otra")
 
-/** Lista de lesiones y condiciones médicas, guardadas solo en el dispositivo. */
+/** Lista de lesiones y condiciones médicas; la sincronización en nube requiere consentimiento aparte. */
 @Composable
 internal fun HealthSection(vm: GymViewModel) {
     val items by vm.conditions.collectAsStateWithLifecycle()
@@ -65,7 +65,20 @@ internal fun HealthSection(vm: GymViewModel) {
             Switch(checked = vm.shareHealth, onCheckedChange = { vm.updateShareHealth(it) })
         }
         Text(
-            "Se guardan solo en este dispositivo. Si lo dejas activado, el coach de IA las recibe como contexto para adaptar tus ejercicios. No sustituyen la opinión de un profesional de la salud.",
+            "Esta opción permite que el coach de IA use tus condiciones como contexto para adaptar las recomendaciones. No las sincroniza con la nube.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Sincronizar condiciones de salud", fontWeight = FontWeight.Medium)
+                Text("Permite guardar estas condiciones en tu cuenta Firebase y recuperarlas en otros dispositivos.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = vm.healthSyncConsent, onCheckedChange = { vm.updateHealthSyncConsent(it) }, enabled = vm.account != null)
+        }
+        Text(
+            if (vm.account == null) "Inicia sesión para activar la sincronización de salud. Por defecto está desactivada."
+            else "Puedes retirar el consentimiento cuando quieras; al desactivarlo se eliminan las condiciones almacenadas en la nube.",
             color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -115,7 +128,7 @@ internal fun HealthPromptDialog(vm: GymViewModel, onAdd: () -> Unit) {
         title = { Text("¿Tienes lesiones o condiciones médicas?") },
         text = {
             Text(
-                "Cuéntanos si tienes alguna (rodilla, hombro, espalda, asma, hipertensión…) para adaptar tus ejercicios y recomendaciones. Se guardan solo en tu dispositivo.",
+                "Cuéntanos si tienes alguna (rodilla, hombro, espalda, asma, hipertensión…) para adaptar tus ejercicios y recomendaciones. Se guardan en este dispositivo; sincronizarlas con tu cuenta requiere tu consentimiento explícito en esta sección.",
             )
         },
         confirmButton = { TextButton(onClick = { vm.markHealthAsked(); onAdd() }) { Text("Sí, agregar") } },

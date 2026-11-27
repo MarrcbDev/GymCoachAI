@@ -317,6 +317,20 @@ fun SettingsScreen(vm: GymViewModel) {
     ScrollColumn {
         AccountSection(vm)
 
+        if (vm.account != null) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SectionTitle("Sincronización en la nube")
+            Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Perfil, rutinas, recordatorios y entrenamientos se sincronizan con tu cuenta. Los chats y las API Keys permanecen en este dispositivo.", style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = { vm.syncNow() }, enabled = !vm.syncBusy) {
+                        Text(if (vm.syncBusy) "Sincronizando…" else "Sincronizar ahora")
+                    }
+                    vm.syncMessage?.let { Text(it, color = if (it.startsWith("No se pudo")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
         SectionTitle("Apariencia")

@@ -83,10 +83,24 @@ data class HealthConditionEntity(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+@Entity(tableName = "sync_mappings", primaryKeys = ["collectionName", "localId"])
+data class SyncMappingEntity(
+    val collectionName: String,
+    val localId: Long,
+    val cloudId: String,
+)
+
 @Dao
 interface GymDao {
     @Query("SELECT * FROM user LIMIT 1") suspend fun getUser(): UserEntity?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveUser(user: UserEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertRoutine(routine: RoutineEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertSession(session: SessionEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertCondition(condition: HealthConditionEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertMapping(mapping: SyncMappingEntity)
+    @Query("SELECT * FROM sync_mappings WHERE collectionName = :collection AND localId = :localId LIMIT 1") suspend fun mappingForLocal(collection: String, localId: Long): SyncMappingEntity?
+    @Query("SELECT * FROM sync_mappings WHERE collectionName = :collection AND cloudId = :cloudId LIMIT 1") suspend fun mappingForCloud(collection: String, cloudId: String): SyncMappingEntity?
+    @Query("DELETE FROM sync_mappings WHERE collectionName = :collection AND localId = :localId") suspend fun deleteMapping(collection: String, localId: Long)
 
     @Query("SELECT * FROM chat_messages ORDER BY createdAt, id") suspend fun messages(): List<ChatMessageEntity>
     @Insert suspend fun addMessage(message: ChatMessageEntity): Long
@@ -110,6 +124,7 @@ interface GymDao {
     @Delete suspend fun deleteCondition(condition: HealthConditionEntity)
 
     @Query("SELECT * FROM sessions ORDER BY startMs DESC") fun sessions(): Flow<List<SessionEntity>>
+    @Query("SELECT * FROM sessions ORDER BY startMs DESC") suspend fun sessionsOnce(): List<SessionEntity>
     @Insert suspend fun addSession(session: SessionEntity)
     @Query("SELECT COUNT(*) FROM sessions WHERE startMs = :startMs AND source = 'watch'") suspend fun watchCount(startMs: Long): Int
 }
@@ -153,12 +168,19 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** v5 -> v6: tabla que relaciona IDs locales con documentos estables de Firestore. */
+private val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `sync_mappings` (`collectionName` TEXT NOT NULL, `localId` INTEGER NOT NULL, `cloudId` TEXT NOT NULL, PRIMARY KEY(`collectionName`, `localId`))")
+    }
+}
+
 @Database(
     entities = [
         UserEntity::class, ChatMessageEntity::class, RoutineEntity::class, ReminderEntity::class,
-        SessionEntity::class, HealthConditionEntity::class,
+        SessionEntity::class, HealthConditionEntity::class, SyncMappingEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class GymDatabase : RoomDatabase() {
@@ -169,8 +191,9 @@ abstract class GymDatabase : RoomDatabase() {
 
         fun get(context: Context): GymDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, GymDatabase::class.java, "gymcoach_native.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                // No se destruyen datos existentes al actualizar.
+                
                 .build()
                 .also { instance = it }
         }

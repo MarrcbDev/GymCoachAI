@@ -65,6 +65,10 @@ class GymViewModel(
     var account by mutableStateOf<AccountInfo?>(null); private set
     var authBusy by mutableStateOf(false); private set
     var authMessage by mutableStateOf<String?>(null)
+    var syncBusy by mutableStateOf(false); private set
+    var syncMessage by mutableStateOf<String?>(null); private set
+    private var syncPending = false
+    private val syncManager by lazy { FirestoreSyncManager() }
     var aiSource by mutableStateOf(uiPrefs.getString("ai_source", "account") ?: "account"); private set
     var quotaText by mutableStateOf<String?>(null); private set
     val backendConfigured: Boolean get() = BuildConfig.BACKEND_URL.isNotBlank()
@@ -73,7 +77,11 @@ class GymViewModel(
     val canChat: Boolean get() = useBackend || hasApiKey
 
     // ───────── salud ─────────
+    // Este ajuste controla si el coach IA recibe el contexto de salud; no es consentimiento de nube.
     var shareHealth by mutableStateOf(uiPrefs.getBoolean("share_health", true)); private set
+    // El consentimiento para sincronizar datos médicos es independiente y comienza desactivado.
+    var healthSyncConsent by mutableStateOf(false); private set
+    private var healthSyncConsentExplicit = false
     var healthAsked by mutableStateOf(uiPrefs.getBoolean("health_asked", false)); private set
     var openHealthDialog by mutableStateOf(false)
 
@@ -87,7 +95,13 @@ class GymViewModel(
 
     init {
         account = auth.current()
-        auth.listen { account = it }
+        loadHealthConsentForAccount(account)
+        auth.listen { changed ->
+            val previousUid = account?.uid
+            account = changed
+            if (changed?.uid != previousUid) loadHealthConsentForAccount(changed)
+            if (changed != null && changed.uid != previousUid) syncNow()
+        }
         viewModelScope.launch {
             runCatching { LegacyUserImporter(appContext, db).importIfNeeded() }
             user = runCatching { dao.getUser() }.getOrNull()
@@ -96,6 +110,7 @@ class GymViewModel(
             }.getOrDefault(emptyList())
             hasApiKey = vault.hasKey()
             loading = false
+            if (account != null) syncNow()
         }
     }
 
@@ -153,6 +168,7 @@ class GymViewModel(
     fun saveProfile(name: String, sex: String, age: Int, height: Double, weight: Double, goals: String, imagePath: String) =
         viewModelScope.launch {
             val previous = user
+            account?.uid?.let { uiPrefs.edit().putLong("profile_updated_at_${it}", System.currentTimeMillis()).apply() }
             dao.saveUser(
                 UserEntity(
                     id = previous?.id ?: 0, name = name.trim(), imagePath = imagePath,
@@ -161,6 +177,7 @@ class GymViewModel(
             )
             if (previous != null && previous.imagePath != imagePath) PhotoUtils.deleteOld(appContext, previous.imagePath)
             user = dao.getUser()
+            syncNow()
         }
 
     // ───────── notas y alarmas ─────────
@@ -176,17 +193,24 @@ class GymViewModel(
         val id = dao.upsertReminder(r).toInt()
         val saved = if (r.id == 0) r.copy(id = id) else r
         ReminderScheduler.schedule(appContext, saved)
+        syncNow()
         return saved
     }
 
     fun deleteReminder(r: ReminderEntity) = viewModelScope.launch {
         ReminderScheduler.cancel(appContext, r.id)
+        account?.let { runCatching { syncManager.deleteRemote(it.uid, dao, "reminders", r.id.toLong()) } }
         dao.deleteReminder(r)
+        syncNow()
     }
 
     // ───────── rutinas ─────────
-    fun saveRoutine(r: RoutineEntity) = viewModelScope.launch { dao.addRoutine(r) }
-    fun deleteRoutine(r: RoutineEntity) = viewModelScope.launch { dao.deleteRoutine(r) }
+    fun saveRoutine(r: RoutineEntity) = viewModelScope.launch { dao.addRoutine(r); syncNow() }
+    fun deleteRoutine(r: RoutineEntity) = viewModelScope.launch {
+        account?.let { runCatching { syncManager.deleteRemote(it.uid, dao, "routines", r.id) } }
+        dao.deleteRoutine(r)
+        syncNow()
+    }
 
     // ───────── entrenamiento ─────────
     fun selectMode(name: String) {
@@ -268,6 +292,7 @@ class GymViewModel(
                         mode = s.mode, routineName = s.routineName, source = "phone",
                     ),
                 )
+                syncNow()
             }
         }
         workout = s.copy(phase = Phase.DONE, running = false)
@@ -452,6 +477,7 @@ class GymViewModel(
             result.onSuccess {
                 account = auth.current()
                 updateAiSource("account")
+                syncNow()
                 if (useBackend) refreshModels()
             }
             authBusy = false
@@ -500,9 +526,14 @@ class GymViewModel(
         if (name.isBlank()) return@launch
         dao.addCondition(HealthConditionEntity(name = name.trim(), kind = kind, notes = notes.trim()))
         markHealthAsked()
+        if (healthSyncConsent) syncNow()
     }
 
-    fun deleteCondition(c: HealthConditionEntity) = viewModelScope.launch { dao.deleteCondition(c) }
+    fun deleteCondition(c: HealthConditionEntity) = viewModelScope.launch {
+        if (healthSyncConsent) account?.let { runCatching { syncManager.deleteRemote(it.uid, dao, "health_conditions", c.id) } }
+        dao.deleteCondition(c)
+        if (healthSyncConsent) syncNow()
+    }
 
     fun markHealthAsked() {
         healthAsked = true
@@ -512,6 +543,60 @@ class GymViewModel(
     fun updateShareHealth(value: Boolean) {
         shareHealth = value
         uiPrefs.edit().putBoolean("share_health", value).apply()
+    }
+
+    private fun loadHealthConsentForAccount(acc: AccountInfo?) {
+        if (acc == null) {
+            healthSyncConsent = false
+            healthSyncConsentExplicit = false
+            return
+        }
+        healthSyncConsent = uiPrefs.getBoolean("health_sync_consent_${acc.uid}", false)
+        healthSyncConsentExplicit = uiPrefs.getBoolean("health_sync_consent_set_${acc.uid}", false)
+    }
+
+    fun updateHealthSyncConsent(value: Boolean) {
+        val uid = account?.uid ?: return
+        healthSyncConsent = value
+        healthSyncConsentExplicit = true
+        uiPrefs.edit().putBoolean("health_sync_consent_${uid}", value)
+            .putBoolean("health_sync_consent_set_${uid}", true).apply()
+        syncNow()
+    }
+
+    /** Sincroniza datos generales con la cuenta autenticada; el chat nunca se incluye. */
+    fun syncNow() {
+        val uid = account?.uid ?: return
+        if (syncBusy) {
+            syncPending = true
+            return
+        }
+        viewModelScope.launch {
+            syncBusy = true
+            syncMessage = null
+            try {
+                val result = syncManager.sync(
+                    uid, dao, healthSyncConsent, healthSyncConsentExplicit,
+                    uiPrefs.getLong("profile_updated_at_${uid}", 0L),
+                )
+                syncMessage = result.message
+                if (!healthSyncConsentExplicit) {
+                    healthSyncConsent = result.healthConsent
+                    uiPrefs.edit().putBoolean("health_sync_consent_${uid}", result.healthConsent).apply()
+                }
+                uiPrefs.edit().putLong("profile_updated_at_${uid}", System.currentTimeMillis()).apply()
+                user = dao.getUser()
+                dao.allReminders().forEach { ReminderScheduler.schedule(appContext, it) }
+            } catch (e: Exception) {
+                syncMessage = "No se pudo sincronizar: ${e.message ?: "comprueba tu conexión"}"
+            } finally {
+                syncBusy = false
+                if (syncPending) {
+                    syncPending = false
+                    syncNow()
+                }
+            }
+        }
     }
 
     /** Último entrenamiento recibido desde el reloj (lo guarda WorkoutDataListenerService). */
