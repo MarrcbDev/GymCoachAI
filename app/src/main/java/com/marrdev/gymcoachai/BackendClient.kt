@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 data class BackendReply(val content: String, val remaining: Int?, val limit: Int?)
 
 /**
- * Cliente del backend (Firebase Function, ver BACKEND.md). El backend valida el token de Firebase,
+ * Cliente del backend (Cloudflare Worker, ver BACKEND.md). El backend valida el token de Firebase,
  * aplica el límite diario y usa la API Key del desarrollador, que nunca viaja dentro de la app.
  */
 class BackendClient(private val baseUrl: String) {

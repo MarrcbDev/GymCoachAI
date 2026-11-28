@@ -5,5 +5,5 @@ local.properties
 *.iml
 .DS_Store
 
-functions/node_modules/
-functions/.env
+worker/node_modules/
+worker/.dev.vars

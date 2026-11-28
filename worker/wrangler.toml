@@ -1,0 +1,25 @@
+name = "gymcoachai-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+[vars]
+# ID de tu proyecto de Firebase (Project settings → General → Project ID).
+FIREBASE_PROJECT_ID = "gymcoachai-27bd2"
+# Modelos que los usuarios con cuenta pueden elegir (separados por coma). El primero es el predeterminado.
+ALLOWED_MODELS = "gpt-4o-mini"
+# Mensajes por usuario y por día con el servicio incluido.
+DAILY_LIMIT = "30"
+# Zona horaria para el reinicio diario del límite.
+QUOTA_TIMEZONE = "America/Bogota"
+# Tope de tokens de salida por respuesta (súbelo si usas modelos de razonamiento).
+MAX_OUTPUT_TOKENS = "1500"
+
+# Contador de uso por usuario (atómico). Plan gratuito compatible (Durable Objects con SQLite).
+[[durable_objects.bindings]]
+name = "QUOTA"
+class_name = "Quota"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Quota"]
