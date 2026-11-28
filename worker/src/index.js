@@ -12,7 +12,8 @@ import { DurableObject } from "cloudflare:workers";
 
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const MAX_MESSAGES = 20;
-const MAX_MESSAGE_CHARS = 2000;
+const MAX_USER_CHARS = 2000;        // mensaje nuevo del usuario
+const MAX_HISTORY_CHARS = 6000;     // mensajes anteriores (respuestas largas del coach); se recortan, no se rechazan
 const MAX_SYSTEM_CHARS = 8000;
 
 // Reglas que el servidor antepone siempre, aunque la app (o alguien que la imite) envíe otro contexto.
@@ -164,11 +165,17 @@ export default {
       return json({ error: "Conversación inválida." }, 400);
     }
     const clean = [];
-    for (const m of messages) {
-      if (!m || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || m.content.length > MAX_MESSAGE_CHARS) {
-        return json({ error: "Mensaje inválido o demasiado largo." }, 400);
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (!m || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string") {
+        return json({ error: "Mensaje inválido." }, 400);
       }
-      clean.push({ role: m.role, content: m.content });
+      const isLast = i === messages.length - 1;
+      if (isLast && m.content.length > MAX_USER_CHARS) {
+        return json({ error: `Tu mensaje es demasiado largo (máximo ${MAX_USER_CHARS} caracteres).` }, 400);
+      }
+      // El historial largo se recorta en vez de rechazar toda la conversación.
+      clean.push({ role: m.role, content: isLast ? m.content : m.content.slice(0, MAX_HISTORY_CHARS) });
     }
     if (clean[clean.length - 1].role !== "user") {
       return json({ error: "El último mensaje debe ser del usuario." }, 400);
