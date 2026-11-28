@@ -1,43 +1,43 @@
-# Firestore sync implementation
+# Sincronización con Firestore (automática)
 
-This revision adds phone-side Firestore synchronization for authenticated accounts.
+Los datos de la cuenta se sincronizan solos; ya no hay botón de "Sincronizar ahora".
 
-## Synced data
+## Qué se sincroniza
 
-- User profile fields: name, sex, age, height, weight and goals.
-- Routines.
-- Reminders and alarms.
-- Workout sessions, including sessions received from Wear OS by the phone.
-- Health conditions only when the account's explicit health-sync consent is enabled.
+- Perfil: nombre, sexo, edad, estatura, peso, objetivos y **foto** (WebP 320 px ≈ 15–30 KB, guardada en el propio documento `users/{uid}`; no hace falta Firebase Storage).
+- Rutinas, recordatorios/alarmas y sesiones de entrenamiento (incluidas las que llegan del reloj).
+- Condiciones de salud, solo con el consentimiento explícito de la cuenta.
 
-## Kept local
+## Qué NO se sincroniza
 
-- Chat messages and chat history (Room only).
-- Personal OpenAI API key (Android Keystore only).
-- Profile image file path. The image itself is not uploaded in this revision.
+- Chat (solo Room) y API Key personal (solo Android Keystore).
 
-## Firestore layout
+## Cuándo se sincroniza
 
-- `users/{uid}`: profile and `healthSyncConsent`.
-- `users/{uid}/routines/{documentId}`
-- `users/{uid}/reminders/{documentId}`
-- `users/{uid}/sessions/{documentId}`
-- `users/{uid}/health_conditions/{documentId}` (consent required)
+- Unos segundos después de cada cambio local (se agrupan varios cambios en una sola sincronización).
+- Al abrir la app o volver a ella.
+- Cuando otro dispositivo cambia algo: cada escritura actualiza `syncRev`/`syncDevice` en `users/{uid}` y los demás dispositivos escuchan **solo ese documento**.
+- Si falla (sin conexión, etc.) reintenta sola con espera creciente: 15 s, 30 s, 1 min… hasta 10 min.
 
-Room database version 6 adds `sync_mappings`, preserving existing local data and mapping Room IDs to stable Firestore document IDs. No destructive Room migration is used.
+## Cómo se resuelven los cambios
 
-## How it runs
+- Cada documento guarda una huella (`lastHash` en `sync_mappings`, Room v7). Solo se sube lo que cambió aquí y solo se baja lo que cambió en otro dispositivo; si no cambió nada no hay escrituras.
+- Borrados: borrar en un dispositivo lo borra en los demás.
+- Si el mismo elemento cambia en dos dispositivos a la vez, gana el dispositivo que está sincronizando.
+- Perfil: gana la edición más reciente (`updatedAt` solo cambia cuando el usuario edita el perfil).
 
-- Sync starts after an authenticated account is loaded.
-- Profile, routine, reminder and workout changes trigger sync.
-- A manual **Sincronizar ahora** action is available under Settings.
-- Phone syncs workout sessions received from the watch. The watch does not need its own Firebase login.
-- If health-sync consent is revoked, the app attempts to delete the cloud health-condition documents before recording the revoked consent.
+## Foto de perfil
 
-## Important notes
+- Se recorta al centro en cuadrado de 320 px y se guarda en WebP calidad 80 (antes: 768 px JPEG 90).
+- Las fotos pesadas de versiones anteriores se recomprimen una sola vez al abrir la app.
+- Se sube en base64 dentro de `users/{uid}.photo` junto con `photoHash`; solo se vuelve a subir si la foto cambia. Las reglas rechazan valores de más de 150 KB.
 
-- `share_health` (whether the AI coach may use health context) is separate from `health_sync_consent` (whether health records may be stored in the user's Firebase account).
-- Health synchronization defaults to off for a new account/device. A previously recorded account consent is respected on another device unless the user explicitly changes it there.
-- Profile image upload to Firebase Storage is not included yet; image paths remain device-local.
-- Sync requires Firebase Authentication, the app's `google-services.json` (provided to GitHub Actions through `GOOGLE_SERVICES_JSON`), and the deployed Firestore rules.
-- This first sync layer does not provide a full offline conflict-resolution queue. If a deletion happens while offline, sync may need to be run again after reconnecting; review the result shown in Settings.
+## Estructura en Firestore
+
+- `users/{uid}`: perfil, `healthSyncConsent`, `photo`, `photoHash`, `syncRev`, `syncDevice`.
+- `users/{uid}/routines|reminders|sessions/{documentId}`
+- `users/{uid}/health_conditions/{documentId}` (requiere consentimiento)
+
+## Despliegue
+
+Las reglas cambiaron (validación del tamaño de la foto): `firebase deploy --only firestore:rules`.

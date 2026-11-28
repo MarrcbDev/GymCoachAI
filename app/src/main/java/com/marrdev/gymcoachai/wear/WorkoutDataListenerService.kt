@@ -41,7 +41,8 @@ class WorkoutDataListenerService : WearableListenerService() {
                             val consent = prefs.getBoolean("health_sync_consent_${uid}", false)
                             val updatedAt = prefs.getLong("profile_updated_at_${uid}", 0L)
                             val consentExplicit = prefs.getBoolean("health_sync_consent_set_${uid}", false)
-                            runCatching { FirestoreSyncManager().sync(uid, dao, consent, consentExplicit, updatedAt) }
+                            runCatching { FirestoreSyncManager(applicationContext).sync(uid, dao, consent, consentExplicit, updatedAt) }
+                                .onSuccess { prefs.edit().putLong("profile_updated_at_${uid}", it.profileUpdatedAt).apply() }
                         }
                     }
                 }

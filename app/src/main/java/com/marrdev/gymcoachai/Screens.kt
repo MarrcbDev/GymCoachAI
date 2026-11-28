@@ -322,11 +322,15 @@ fun SettingsScreen(vm: GymViewModel) {
             SectionTitle("Sincronización en la nube")
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Perfil, rutinas, recordatorios y entrenamientos se sincronizan con tu cuenta. Los chats y las API Keys permanecen en este dispositivo.", style = MaterialTheme.typography.bodyMedium)
-                    Button(onClick = { vm.syncNow() }, enabled = !vm.syncBusy) {
-                        Text(if (vm.syncBusy) "Sincronizando…" else "Sincronizar ahora")
+                    Text("Perfil, foto, rutinas, recordatorios y entrenamientos se sincronizan solos con tu cuenta en cuanto cambian. Los chats y las API Keys permanecen en este dispositivo.", style = MaterialTheme.typography.bodyMedium)
+                    val failed = vm.syncMessage != null
+                    val status = when {
+                        vm.syncBusy -> "Sincronizando…"
+                        failed -> vm.syncMessage!!
+                        vm.lastSyncAt > 0 -> "Sincronizado · ${fmtWhen(vm.lastSyncAt)}"
+                        else -> "Preparando la sincronización…"
                     }
-                    vm.syncMessage?.let { Text(it, color = if (it.startsWith("No se pudo")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
+                    Text(status, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

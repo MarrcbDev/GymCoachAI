@@ -68,6 +68,11 @@ class MainActivity : ComponentActivity() {
         )
         setContent { GymTheme(dynamic = vm.dynamicColor) { GymApp(vm) } }
     }
+
+    override fun onStart() {
+        super.onStart()
+        vm.onAppForeground()
+    }
 }
 
 private data class TabItem(val title: String, val selected: ImageVector, val unselected: ImageVector)

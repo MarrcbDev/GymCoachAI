@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marrdev.gymcoachai.alarms.ReminderScheduler
+import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,6 +26,9 @@ data class ChatLine(val id: Long, val role: String, val content: String, val sug
 
 val DEFAULT_MODELS = listOf("gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1")
 private const val FALLBACK_MODEL = "gpt-4o-mini"
+private const val SYNC_DEBOUNCE_MS = 1_200L
+private const val RETRY_MIN_MS = 15_000L
+private const val RETRY_MAX_MS = 10 * 60_000L
 
 class GymViewModel(
     private val appContext: Context,
@@ -67,8 +72,13 @@ class GymViewModel(
     var authMessage by mutableStateOf<String?>(null)
     var syncBusy by mutableStateOf(false); private set
     var syncMessage by mutableStateOf<String?>(null); private set
+    var lastSyncAt by mutableStateOf(0L); private set
     private var syncPending = false
-    private val syncManager by lazy { FirestoreSyncManager() }
+    private var debounceJob: Job? = null
+    private var retryJob: Job? = null
+    private var retryDelayMs = RETRY_MIN_MS
+    private var remoteListener: ListenerRegistration? = null
+    private val syncManager by lazy { FirestoreSyncManager(appContext) }
     var aiSource by mutableStateOf(uiPrefs.getString("ai_source", "account") ?: "account"); private set
     var quotaText by mutableStateOf<String?>(null); private set
     val backendConfigured: Boolean get() = BuildConfig.BACKEND_URL.isNotBlank()
@@ -100,17 +110,30 @@ class GymViewModel(
             val previousUid = account?.uid
             account = changed
             if (changed?.uid != previousUid) loadHealthConsentForAccount(changed)
-            if (changed != null && changed.uid != previousUid) syncNow()
+            if (changed == null) stopAutoSync()
+            else if (changed.uid != previousUid) { startAutoSync(changed.uid); syncNow() }
         }
         viewModelScope.launch {
             runCatching { LegacyUserImporter(appContext, db).importIfNeeded() }
             user = runCatching { dao.getUser() }.getOrNull()
+            // Fotos guardadas por versiones anteriores (pesadas): se comprimen una sola vez.
+            runCatching {
+                val u = user
+                if (u != null) {
+                    PhotoUtils.recompressIfHeavy(appContext, u.imagePath)?.let { newPath ->
+                        dao.saveUser(u.copy(imagePath = newPath))
+                        PhotoUtils.deleteOld(appContext, u.imagePath)
+                        account?.uid?.let { uiPrefs.edit().putLong("profile_updated_at_$it", System.currentTimeMillis()).apply() }
+                        user = dao.getUser()
+                    }
+                }
+            }
             messages = runCatching {
                 dao.messages().map { ChatLine(it.id, it.role, it.content, parseSuggestions(it.suggestions)) }
             }.getOrDefault(emptyList())
             hasApiKey = vault.hasKey()
             loading = false
-            if (account != null) syncNow()
+            account?.let { startAutoSync(it.uid); syncNow() }
         }
     }
 
@@ -510,6 +533,7 @@ class GymViewModel(
     }
 
     fun signOut() {
+        stopAutoSync()
         auth.signOut()
         account = null
         quotaText = null
@@ -564,38 +588,87 @@ class GymViewModel(
         syncNow()
     }
 
-    /** Sincroniza datos generales con la cuenta autenticada; el chat nunca se incluye. */
+    // ───────── sincronización automática ─────────
+
+    /** Escucha cambios hechos desde otros dispositivos y se sincroniza sola. */
+    private fun startAutoSync(uid: String) {
+        remoteListener?.remove()
+        remoteListener = runCatching { syncManager.listenForRemoteChanges(uid) { syncNow() } }.getOrNull()
+    }
+
+    private fun stopAutoSync() {
+        remoteListener?.remove()
+        remoteListener = null
+        debounceJob?.cancel()
+        retryJob?.cancel()
+        syncPending = false
+        syncMessage = null
+        lastSyncAt = 0L
+    }
+
+    /** Se llama al volver a la app: asegura que lo que cambió mientras estaba cerrada se descargue. */
+    fun onAppForeground() {
+        if (!loading && account != null) syncNow()
+    }
+
+    /**
+     * Pide una sincronización con la cuenta. Varios cambios seguidos se agrupan en una sola
+     * (espera ~1 s) y nunca corren dos a la vez. Los chats y las API Keys nunca se incluyen.
+     */
     fun syncNow() {
-        val uid = account?.uid ?: return
+        if (account == null) return
         if (syncBusy) {
             syncPending = true
             return
         }
-        viewModelScope.launch {
-            syncBusy = true
+        debounceJob?.cancel()
+        debounceJob = viewModelScope.launch {
+            delay(SYNC_DEBOUNCE_MS)
+            runSync()
+        }
+    }
+
+    private suspend fun runSync() {
+        val uid = account?.uid ?: return
+        syncBusy = true
+        try {
+            val result = syncManager.sync(
+                uid, dao, healthSyncConsent, healthSyncConsentExplicit,
+                uiPrefs.getLong("profile_updated_at_${uid}", 0L),
+            )
             syncMessage = null
-            try {
-                val result = syncManager.sync(
-                    uid, dao, healthSyncConsent, healthSyncConsentExplicit,
-                    uiPrefs.getLong("profile_updated_at_${uid}", 0L),
-                )
-                syncMessage = result.message
-                if (!healthSyncConsentExplicit) {
-                    healthSyncConsent = result.healthConsent
-                    uiPrefs.edit().putBoolean("health_sync_consent_${uid}", result.healthConsent).apply()
-                }
-                uiPrefs.edit().putLong("profile_updated_at_${uid}", System.currentTimeMillis()).apply()
-                user = dao.getUser()
-                dao.allReminders().forEach { ReminderScheduler.schedule(appContext, it) }
-            } catch (e: Exception) {
-                syncMessage = "No se pudo sincronizar: ${e.message ?: "comprueba tu conexión"}"
-            } finally {
-                syncBusy = false
-                if (syncPending) {
-                    syncPending = false
-                    syncNow()
-                }
+            lastSyncAt = System.currentTimeMillis()
+            retryJob?.cancel()
+            retryDelayMs = RETRY_MIN_MS
+            if (!healthSyncConsentExplicit) {
+                healthSyncConsent = result.healthConsent
+                uiPrefs.edit().putBoolean("health_sync_consent_${uid}", result.healthConsent).apply()
             }
+            uiPrefs.edit().putLong("profile_updated_at_${uid}", result.profileUpdatedAt).apply()
+            user = dao.getUser()
+            result.deletedReminderIds.forEach { ReminderScheduler.cancel(appContext, it) }
+            dao.allReminders().forEach { ReminderScheduler.schedule(appContext, it) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            syncMessage = "No se pudo sincronizar: ${e.message ?: "comprueba tu conexión"}. Se reintentará sola."
+            scheduleRetry()
+        } finally {
+            syncBusy = false
+            if (syncPending) {
+                syncPending = false
+                syncNow()
+            }
+        }
+    }
+
+    /** Reintento automático con espera creciente (15 s, 30 s, 1 min… hasta 10 min). */
+    private fun scheduleRetry() {
+        retryJob?.cancel()
+        retryJob = viewModelScope.launch {
+            delay(retryDelayMs)
+            retryDelayMs = (retryDelayMs * 2).coerceAtMost(RETRY_MAX_MS)
+            syncNow()
         }
     }
 

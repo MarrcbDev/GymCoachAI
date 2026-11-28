@@ -3,6 +3,7 @@ package com.marrdev.gymcoachai
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +15,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,6 +31,33 @@ internal fun Context.findActivity(): Activity? {
         c = c.baseContext
     }
     return null
+}
+
+/** Botón oficial "Continuar con Google": fondo blanco, logo de 4 colores y texto oscuro. */
+@Composable
+internal fun GoogleSignInButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.White,
+            contentColor = Color(0xFF1F1F1F),
+            disabledContainerColor = Color(0xFFE3E3E3),
+            disabledContentColor = Color(0xFF5F5F5F),
+        ),
+        border = BorderStroke(1.dp, Color(0xFF747775)),
+    ) {
+        Icon(painterResource(R.drawable.ic_google), contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.Unspecified)
+        Spacer(Modifier.width(10.dp))
+        Text(text, fontWeight = FontWeight.Medium)
+    }
 }
 
 /** Pantalla inicial cuando no hay perfil: Google, correo o registro local (sin cuenta). */
@@ -52,15 +82,12 @@ fun WelcomeScreen(vm: GymViewModel, onLocal: () -> Unit) {
         )
         Spacer(Modifier.height(28.dp))
 
-        Button(
+        GoogleSignInButton(
+            text = if (vm.authBusy) "Conectando…" else "Continuar con Google",
             onClick = { context.findActivity()?.let { vm.signInGoogle(it) } },
             enabled = vm.googleAvailable && !vm.authBusy,
             modifier = Modifier.fillMaxWidth().height(52.dp),
-        ) {
-            Icon(Icons.Rounded.AccountCircle, null, Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (vm.authBusy) "Conectando…" else "Continuar con Google")
-        }
+        )
         Spacer(Modifier.height(10.dp))
         FilledTonalButton(
             onClick = { showEmail = true },
@@ -170,10 +197,11 @@ internal fun AccountSection(vm: GymViewModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
+                        GoogleSignInButton(
+                            text = "Google",
                             onClick = { context.findActivity()?.let { vm.signInGoogle(it) } },
                             enabled = vm.googleAvailable && !vm.authBusy,
-                        ) { Text("Google") }
+                        )
                         FilledTonalButton(onClick = { showEmail = true }) { Text("Correo") }
                     }
                 }

@@ -88,6 +88,8 @@ data class SyncMappingEntity(
     val collectionName: String,
     val localId: Long,
     val cloudId: String,
+    /** Huella del contenido en la última sincronización; permite saber qué lado cambió. */
+    val lastHash: String = "",
 )
 
 @Dao
@@ -101,6 +103,12 @@ interface GymDao {
     @Query("SELECT * FROM sync_mappings WHERE collectionName = :collection AND localId = :localId LIMIT 1") suspend fun mappingForLocal(collection: String, localId: Long): SyncMappingEntity?
     @Query("SELECT * FROM sync_mappings WHERE collectionName = :collection AND cloudId = :cloudId LIMIT 1") suspend fun mappingForCloud(collection: String, cloudId: String): SyncMappingEntity?
     @Query("DELETE FROM sync_mappings WHERE collectionName = :collection AND localId = :localId") suspend fun deleteMapping(collection: String, localId: Long)
+    @Query("DELETE FROM sync_mappings") suspend fun clearAllMappings()
+    @Query("DELETE FROM sync_mappings WHERE collectionName = :collection") suspend fun clearMappings(collection: String)
+    @Query("DELETE FROM routines WHERE id = :id") suspend fun deleteRoutineById(id: Long)
+    @Query("DELETE FROM reminders WHERE id = :id") suspend fun deleteReminderById(id: Int)
+    @Query("DELETE FROM sessions WHERE id = :id") suspend fun deleteSessionById(id: Long)
+    @Query("DELETE FROM health_conditions WHERE id = :id") suspend fun deleteConditionById(id: Long)
 
     @Query("SELECT * FROM chat_messages ORDER BY createdAt, id") suspend fun messages(): List<ChatMessageEntity>
     @Insert suspend fun addMessage(message: ChatMessageEntity): Long
@@ -125,7 +133,7 @@ interface GymDao {
 
     @Query("SELECT * FROM sessions ORDER BY startMs DESC") fun sessions(): Flow<List<SessionEntity>>
     @Query("SELECT * FROM sessions ORDER BY startMs DESC") suspend fun sessionsOnce(): List<SessionEntity>
-    @Insert suspend fun addSession(session: SessionEntity)
+    @Insert suspend fun addSession(session: SessionEntity): Long
     @Query("SELECT COUNT(*) FROM sessions WHERE startMs = :startMs AND source = 'watch'") suspend fun watchCount(startMs: Long): Int
 }
 
@@ -175,12 +183,19 @@ private val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/** v6 -> v7: huella del último contenido sincronizado para detectar cambios locales y remotos. */
+private val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE sync_mappings ADD COLUMN lastHash TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [
         UserEntity::class, ChatMessageEntity::class, RoutineEntity::class, ReminderEntity::class,
         SessionEntity::class, HealthConditionEntity::class, SyncMappingEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class GymDatabase : RoomDatabase() {
@@ -191,7 +206,7 @@ abstract class GymDatabase : RoomDatabase() {
 
         fun get(context: Context): GymDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, GymDatabase::class.java, "gymcoach_native.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 // No se destruyen datos existentes al actualizar.
                 
                 .build()

@@ -21,7 +21,10 @@ service cloud.firestore {
       allow read: if isOwner(uid);
       allow create, update: if isOwner(uid)
         && request.resource.data.keys().hasAll(['healthSyncConsent'])
-        && request.resource.data.healthSyncConsent is bool;
+        && request.resource.data.healthSyncConsent is bool
+        // Foto de perfil liviana (WebP 320 px en base64, ~15-35 KB). Se rechaza algo anormalmente grande.
+        && (!('photo' in request.resource.data)
+            || (request.resource.data.photo is string && request.resource.data.photo.size() < 150000));
       // La eliminación de cuentas y sus datos se gestionará desde un flujo controlado.
       allow delete: if false;
 
