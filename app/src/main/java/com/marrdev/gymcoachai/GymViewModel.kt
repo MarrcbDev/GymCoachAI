@@ -60,6 +60,9 @@ class GymViewModel(
     var chatError by mutableStateOf<String?>(null); private set
     var aiModel by mutableStateOf(uiPrefs.getString("ai_model", FALLBACK_MODEL) ?: FALLBACK_MODEL); private set
     var models by mutableStateOf(DEFAULT_MODELS); private set
+    // Cada fuente (API Key propia / servicio incluido) tiene su propia lista y su propio modelo elegido.
+    private var ownModels = DEFAULT_MODELS
+    private var accountModels: List<String> = emptyList()
     var modelsLoading by mutableStateOf(false); private set
     var modelsMessage by mutableStateOf<String?>(null); private set
 
@@ -106,10 +109,12 @@ class GymViewModel(
     init {
         account = auth.current()
         loadHealthConsentForAccount(account)
+        loadModelForSource()
         auth.listen { changed ->
             val previousUid = account?.uid
             account = changed
             if (changed?.uid != previousUid) loadHealthConsentForAccount(changed)
+            loadModelForSource()
             if (changed == null) stopAutoSync()
             else if (changed.uid != previousUid) { startAutoSync(changed.uid); syncNow() }
         }
@@ -151,26 +156,51 @@ class GymViewModel(
         uiPrefs.edit().putBoolean("dynamic_color", value).apply()
     }
 
+    private val modelPrefKey: String get() = if (useBackend) "ai_model_account" else "ai_model_own"
+
     fun updateModel(value: String) {
         aiModel = value
-        uiPrefs.edit().putString("ai_model", value.trim()).apply()
+        uiPrefs.edit().putString(modelPrefKey, value.trim()).apply()
+    }
+
+    /**
+     * Muestra la lista y el modelo de la fuente activa (servicio incluido o API Key propia).
+     * Así un modelo caro elegido con tu propia clave no se queda marcado al cambiar al servicio incluido.
+     */
+    private fun loadModelForSource() {
+        if (useBackend) {
+            models = accountModels.ifEmpty { listOf(FALLBACK_MODEL) }
+            val saved = uiPrefs.getString("ai_model_account", null)
+            aiModel = saved?.takeIf { accountModels.isEmpty() || it in accountModels }
+                ?: accountModels.firstOrNull() ?: FALLBACK_MODEL
+            if (accountModels.isEmpty()) refreshModels()
+        } else {
+            models = ownModels
+            aiModel = uiPrefs.getString("ai_model_own", null)
+                ?: uiPrefs.getString("ai_model", null) ?: FALLBACK_MODEL
+        }
     }
 
     fun refreshModels() {
+        val forBackend = useBackend
         viewModelScope.launch {
             modelsLoading = true
             modelsMessage = null
             try {
-                val list = if (useBackend) {
+                val list = if (forBackend) {
                     val token = auth.idToken() ?: error("Vuelve a iniciar sesión.")
                     BackendClient(BuildConfig.BACKEND_URL).models(token)
                 } else {
                     OpenAiClient(vault.read()).listModels()
                 }
                 if (list.isNotEmpty()) {
-                    models = list
-                    // Con el servicio incluido solo valen los modelos que el backend permite.
-                    if (useBackend && aiModel !in list) updateModel(list.first())
+                    if (forBackend) accountModels = list else ownModels = list
+                    // Solo se actualiza la pantalla si la fuente activa sigue siendo la misma.
+                    if (forBackend == useBackend) {
+                        models = list
+                        // Con el servicio incluido solo valen los modelos que el backend permite.
+                        if (forBackend && aiModel !in list) updateModel(list.first())
+                    }
                 }
                 modelsMessage = "${list.size} modelos disponibles."
             } catch (e: Exception) {
@@ -501,7 +531,6 @@ class GymViewModel(
                 account = auth.current()
                 updateAiSource("account")
                 syncNow()
-                if (useBackend) refreshModels()
             }
             authBusy = false
         }
@@ -537,12 +566,16 @@ class GymViewModel(
         auth.signOut()
         account = null
         quotaText = null
+        modelsMessage = null
+        loadModelForSource()
     }
 
     fun updateAiSource(source: String) {
         aiSource = source
         uiPrefs.edit().putString("ai_source", source).apply()
         quotaText = null
+        modelsMessage = null
+        loadModelForSource()
     }
 
     // ───────── salud ─────────
